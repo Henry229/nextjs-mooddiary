@@ -1,40 +1,55 @@
-import { Diary } from './types';
+import { DiaryEntry } from '@/app/types/dairy';
+export const storageKey = 'diary-entries';
 
-// localStorage에서 일기 목록 가져오기
-export const getDiaries = (): Diary[] => {
+export const getAllEntries = (): DiaryEntry[] => {
   if (typeof window === 'undefined') return [];
-  const diaries = localStorage.getItem('diaries');
-  return diaries ? JSON.parse(diaries) : [];
+  const entries = localStorage.getItem(storageKey);
+  return entries ? JSON.parse(entries) : [];
 };
 
-// 새 일기 저장
-export const saveDiary = (
-  diary: Omit<Diary, 'id' | 'createdAt' | 'updatedAt'>
-) => {
-  const diaries = getDiaries();
-  const newDiary: Diary = {
-    ...diary,
+export const getEntryById = (id: string): DiaryEntry | undefined => {
+  const entries = getAllEntries();
+  return entries.find((entry) => entry.id === id);
+};
+
+export const createEntry = (date: string, content: string): DiaryEntry => {
+  const entries = getAllEntries();
+  const newEntry: DiaryEntry = {
     id: crypto.randomUUID(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    date,
+    content,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
-  localStorage.setItem('diaries', JSON.stringify([newDiary, ...diaries]));
-  return newDiary;
+  localStorage.setItem(storageKey, JSON.stringify([newEntry, ...entries]));
+  return newEntry;
 };
 
-// 일기 수정
-export const updateDiary = (id: string, diary: Partial<Diary>) => {
-  const diaries = getDiaries();
-  const updatedDiaries = diaries.map((d) =>
-    d.id === id ? { ...d, ...diary, updatedAt: new Date() } : d
-  );
-  localStorage.setItem('diaries', JSON.stringify(updatedDiaries));
+export const updateEntry = (
+  id: string,
+  date: string,
+  content: string
+): DiaryEntry => {
+  const entries = getAllEntries();
+  const updatedEntries = entries.map((entry) => {
+    if (entry.id === id) {
+      return {
+        ...entry,
+        date,
+        content,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return entry;
+  });
+
+  localStorage.setItem(storageKey, JSON.stringify(updatedEntries));
+  return updatedEntries.find((entry) => entry.id === id)!;
 };
 
-// 일기 삭제
-export const deleteDiary = (id: string) => {
-  const diaries = getDiaries();
-  const filteredDiaries = diaries.filter((d) => d.id !== id);
-  localStorage.setItem('diaries', JSON.stringify(filteredDiaries));
+export const deleteEntry = (id: string): void => {
+  const entries = getAllEntries();
+  const filteredEntries = entries.filter((entry) => entry.id !== id);
+  localStorage.setItem(storageKey, JSON.stringify(filteredEntries));
 };

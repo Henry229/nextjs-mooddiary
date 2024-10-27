@@ -1,37 +1,32 @@
+// components/DiaryList.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Diary } from '@/lib/types';
-import { getDiaries, deleteDiary } from '@/lib/diary';
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { getAllEntries } from '@/lib/diary';
+import type { DiaryEntry } from '@/types/diaryType';
 
 export default function DiaryList() {
-  const [diaries, setDiaries] = useState<Diary[]>([]);
+  const [entries, setEntries] = useState<DiaryEntry[]>([]);
 
   useEffect(() => {
-    setDiaries(getDiaries());
+    setEntries(getAllEntries());
   }, []);
 
-  const handleDelete = (id: string) => {
-    deleteDiary(id);
-    setDiaries(getDiaries());
-  };
-
   return (
-    <div className='space-y-4'>
-      {diaries.map((diary) => (
-        <div
-          key={diary.id}
-          className='p-4 border rounded-lg shadow-sm hover:shadow-md transition-shadow'
-        >
-          <h3 className='text-lg font-semibold'>{diary.title}</h3>
-          <p className='text-gray-600 mt-2'>{diary.content}</p>
-          <div className='mt-4 flex justify-end space-x-2'>
-            <Button variant='outline' onClick={() => handleDelete(diary.id)}>
-              삭제
-            </Button>
-          </div>
-        </div>
+    <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
+      {entries.map((entry) => (
+        <Link key={entry.id} href={`/${entry.id}`}>
+          <Card className='hover:bg-accent transition-colors'>
+            <CardHeader className='text-sm text-muted-foreground'>
+              {new Date(entry.date).toLocaleDateString('ko-KR')}
+            </CardHeader>
+            <CardContent>
+              <p className='line-clamp-3'>{entry.content}</p>
+            </CardContent>
+          </Card>
+        </Link>
       ))}
     </div>
   );

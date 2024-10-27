@@ -1,20 +1,20 @@
-import DiaryForm from '@/components/DiaryForm';
 import DiaryList from '@/components/DiaryList';
+import Link from 'next/link';
+import { PlusCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function Home() {
   return (
-    <main className='container mx-auto px-4 py-8'>
-      <h1 className='text-3xl font-bold mb-8'>나의 일기장</h1>
-      <div className='grid gap-8'>
-        <section>
-          <h2 className='text-xl font-semibold mb-4'>새 일기 작성</h2>
-          <DiaryForm />
-        </section>
-        <section>
-          <h2 className='text-xl font-semibold mb-4'>일기 목록</h2>
-          <DiaryList />
-        </section>
+    <div className='container mx-auto py-8'>
+      <div className='flex justify-between items-center mb-6'>
+        <h1 className='text-3xl font-bold'>나의 일기장</h1>
+        <Link href='/new'>
+          <Button>
+            <PlusCircle className='mr-2 h-4 w-4' />새 일기 작성
+          </Button>
+        </Link>
       </div>
-    </main>
+      <DiaryList />
+    </div>
   );
 }
