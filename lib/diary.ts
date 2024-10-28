@@ -1,5 +1,6 @@
-import { DiaryEntry } from '@/app/types/dairy';
 export const storageKey = 'diary-entries';
+import type { DiaryEntry } from '@/types/diaryType';
+import { analyzeMood, MOOD_COLORS } from './mood';
 
 export const getAllEntries = (): DiaryEntry[] => {
   if (typeof window === 'undefined') return [];
@@ -12,12 +13,19 @@ export const getEntryById = (id: string): DiaryEntry | undefined => {
   return entries.find((entry) => entry.id === id);
 };
 
-export const createEntry = (date: string, content: string): DiaryEntry => {
+export const createEntry = async (
+  date: string,
+  content: string
+): Promise<DiaryEntry> => {
   const entries = getAllEntries();
+  const mood = await analyzeMood(content);
+
   const newEntry: DiaryEntry = {
     id: crypto.randomUUID(),
     date,
     content,
+    mood,
+    moodColor: MOOD_COLORS[mood],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -26,18 +34,22 @@ export const createEntry = (date: string, content: string): DiaryEntry => {
   return newEntry;
 };
 
-export const updateEntry = (
+export const updateEntry = async (
   id: string,
   date: string,
   content: string
-): DiaryEntry => {
+): Promise<DiaryEntry> => {
   const entries = getAllEntries();
+  const mood = await analyzeMood(content);
+
   const updatedEntries = entries.map((entry) => {
     if (entry.id === id) {
       return {
         ...entry,
         date,
         content,
+        mood,
+        moodColor: MOOD_COLORS[mood],
         updatedAt: new Date().toISOString(),
       };
     }
