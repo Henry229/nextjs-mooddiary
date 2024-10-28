@@ -86,19 +86,213 @@ next-env.d.ts
 
 ```
 
-# app/favicon.ico
+# app\[id]\page.tsx
+
+```tsx
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Pencil, Trash2, Meh } from 'lucide-react';
+import { getEntryById, deleteEntry } from '@/lib/diary';
+import { MOOD_ICONS } from '@/lib/mood';
+import type { MoodType } from '@/types/diaryType';
+import Link from 'next/link';
+
+export default function DiaryDetail({ params }: { params: { id: string } }) {
+  const router = useRouter();
+  const entry = getEntryById(params.id);
+
+  if (!entry) {
+    return <div>일기를 찾을 수 없습니다.</div>;
+  }
+
+  // 타입 안전성을 위한 처리
+  const mood = (entry.mood || '평범') as MoodType;
+  const MoodIcon = MOOD_ICONS[mood] || Meh;
+
+  const handleDelete = () => {
+    if (confirm('정말로 삭제하시겠습니까?')) {
+      deleteEntry(params.id);
+      router.push('/');
+    }
+  };
+
+  return (
+    <div className='container mx-auto py-8'>
+      <Card
+        style={{
+          backgroundColor: entry.moodColor ? `${entry.moodColor}20` : undefined,
+          borderColor: entry.moodColor ? entry.moodColor : undefined,
+        }}
+      >
+        <CardHeader className='flex flex-row justify-between items-center'>
+          <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+            <span>{new Date(entry.date).toLocaleDateString('ko-KR')}</span>
+            <div className='flex items-center gap-1'>
+              <MoodIcon
+                className='h-5 w-5'
+                style={{ color: entry.moodColor }}
+              />
+              <span style={{ color: entry.moodColor }}>
+                {entry.mood || '평범'}
+              </span>
+            </div>
+          </div>
+          <div className='flex gap-2'>
+            <Link href={`/edit/${params.id}`}>
+              <Button variant='outline' size='icon'>
+                <Pencil className='h-4 w-4' />
+              </Button>
+            </Link>
+            <Button variant='destructive' size='icon' onClick={handleDelete}>
+              <Trash2 className='h-4 w-4' />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className='whitespace-pre-wrap'>{entry.content}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+```
+
+# app\api\analyze-mood\route.ts
+
+```ts
+import { OpenAI } from 'openai';
+import { MoodType } from '@/types/diaryType';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// 감정 단어만 추출하는 함수
+function extractMood(text: string): MoodType {
+  const moods: MoodType[] = ['행복', '슬픔', '분노', '평범', '신남'];
+  for (const mood of moods) {
+    if (text.includes(mood)) {
+      return mood;
+    }
+  }
+  return '평범';
+}
+
+export async function POST(request: Request) {
+  try {
+    const { content } = await request.json();
+
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content:
+            '당신은 텍스트의 감정을 분석하는 전문가입니다. 다음 감정 중 하나만 선택해야 합니다: 행복, 슬픔, 분노, 평범, 신남. 감정 단어만 답변하세요.',
+        },
+        {
+          role: 'user',
+          content: `다음 텍스트의 감정을 분석해주세요: "${content}"`,
+        },
+      ],
+      model: 'gpt-3.5-turbo',
+      max_tokens: 50,
+      temperature: 0.7,
+    });
+
+    const response = completion.choices[0].message.content?.trim() || '평범';
+    const mood = extractMood(response);
+
+    return Response.json({ mood });
+  } catch (error) {
+    console.error('GPT API 호출 중 오류:', error);
+    return Response.json({ mood: '평범' });
+  }
+}
+
+```
+
+# app\edit\[id]\page.tsx
+
+```tsx
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { Calendar } from '@/components/ui/calendar';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { getEntryById, updateEntry } from '@/lib/diary';
+import { useState, useEffect } from 'react';
+
+export default function EditDiary({ params }: { params: { id: string } }) {
+  const router = useRouter();
+  const [date, setDate] = useState<Date>(new Date());
+  const [content, setContent] = useState('');
+
+  useEffect(() => {
+    const entry = getEntryById(params.id);
+    if (entry) {
+      setDate(new Date(entry.date));
+      setContent(entry.content);
+    }
+  }, [params.id]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!date || !content.trim()) return;
+
+    updateEntry(params.id, date.toISOString(), content.trim());
+    router.push(`/`);
+  };
+
+  return (
+    <div className='container mx-auto py-8'>
+      <h1 className='text-3xl font-bold mb-6'>일기 수정</h1>
+      <form onSubmit={handleSubmit} className='space-y-6'>
+        <div>
+          <Calendar
+            mode='single'
+            selected={date}
+            onSelect={(date) => setDate(date || new Date())}
+            className='rounded-md border'
+          />
+        </div>
+        <Textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder='일기 내용을 수정해주세요...'
+          className='min-h-[300px]'
+        />
+        <div className='flex justify-end gap-4'>
+          <Button type='button' variant='outline' onClick={() => router.back()}>
+            취소
+          </Button>
+          <Button type='submit'>저장</Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+```
+
+# app\favicon.ico
 
 This is a binary file of the type: Binary
 
-# app/fonts/GeistMonoVF.woff
+# app\fonts\GeistMonoVF.woff
 
 This is a binary file of the type: Binary
 
-# app/fonts/GeistVF.woff
+# app\fonts\GeistVF.woff
 
 This is a binary file of the type: Binary
 
-# app/globals.css
+# app\globals.css
 
 ```css
 @tailwind base;
@@ -182,27 +376,28 @@ body {
 
 ```
 
-# app/layout.tsx
+# app\layout.tsx
 
 ```tsx
-import type { Metadata } from "next";
-import localFont from "next/font/local";
-import "./globals.css";
+import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import './globals.css';
+import Link from 'next/link';
 
 const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+  src: './fonts/GeistVF.woff',
+  variable: '--font-geist-sans',
+  weight: '100 900',
 });
 const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+  src: './fonts/GeistMonoVF.woff',
+  variable: '--font-geist-mono',
+  weight: '100 900',
 });
 
 export const metadata: Metadata = {
-  title: "Create Next App",
-  description: "Generated by create next app",
+  title: 'Create Next App',
+  description: 'Generated by create next app',
 };
 
 export default function RootLayout({
@@ -211,10 +406,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang='en'>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <h1 className='text-3xl font-bold p-4'>
+          <Link href='/'>나의 일기장</Link>
+        </h1>
         {children}
       </body>
     </html>
@@ -223,27 +421,84 @@ export default function RootLayout({
 
 ```
 
-# app/page.tsx
+# app\new\page.tsx
 
 ```tsx
-import DiaryForm from '@/components/DiaryForm';
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { Calendar } from '@/components/ui/calendar';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { createEntry } from '@/lib/diary';
+import { useState } from 'react';
+
+export default function NewDiary() {
+  const router = useRouter();
+  const [date, setDate] = useState<Date>(new Date());
+  const [content, setContent] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!date || !content.trim()) return;
+
+    createEntry(date.toISOString(), content.trim());
+    router.push('/');
+  };
+
+  return (
+    <div className='container mx-auto py-8'>
+      <h1 className='text-3xl font-bold mb-6'>새 일기 작성</h1>
+      <form onSubmit={handleSubmit} className='space-y-6'>
+        <div>
+          <Calendar
+            mode='single'
+            selected={date}
+            onSelect={(date) => setDate(date || new Date())}
+            className='rounded-md border'
+          />
+        </div>
+        <Textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder='오늘의 일기를 작성해주세요...'
+          className='min-h-[300px]'
+        />
+        <div className='flex justify-end gap-4'>
+          <Button type='button' variant='outline' onClick={() => router.back()}>
+            취소
+          </Button>
+          <Button type='submit'>저장</Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+```
+
+# app\page.tsx
+
+```tsx
 import DiaryList from '@/components/DiaryList';
+import Link from 'next/link';
+import { PlusCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function Home() {
   return (
-    <main className='container mx-auto px-4 py-8'>
-      <h1 className='text-3xl font-bold mb-8'>나의 일기장</h1>
-      <div className='grid gap-8'>
-        <section>
-          <h2 className='text-xl font-semibold mb-4'>새 일기 작성</h2>
-          <DiaryForm />
-        </section>
-        <section>
-          <h2 className='text-xl font-semibold mb-4'>일기 목록</h2>
-          <DiaryList />
-        </section>
+    <div className='container mx-auto py-8'>
+      <div className='flex justify-between items-center mb-6'>
+        <h1 className='text-2xl font-bold'>일기장 목록</h1>
+        <Link href='/new'>
+          <Button>
+            <PlusCircle className='mr-2 h-4 w-4' />새 일기 작성
+          </Button>
+        </Link>
       </div>
-    </main>
+      <DiaryList />
+    </div>
   );
 }
 
@@ -274,228 +529,66 @@ export default function Home() {
 }
 ```
 
-# components/DiaryForm.tsx
+# components\DiaryList.tsx
 
 ```tsx
-'use client';
-
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { saveDiary, updateDiary } from '@/lib/diary';
-import { Diary } from '@/lib/types';
-import { format, isValid } from 'date-fns';
-import { ko } from 'date-fns/locale';
-import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
-
-interface DiaryFormProps {
-  diary?: Diary;
-  onComplete?: () => void;
-}
-
-export default function DiaryForm({ diary, onComplete }: DiaryFormProps) {
-  const [content, setContent] = useState('');
-  const [date, setDate] = useState<Date>(new Date());
-
-  useEffect(() => {
-    if (diary) {
-      setContent(diary.content);
-      setDate(new Date(diary.date));
-    }
-  }, [diary]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (diary) {
-      updateDiary(diary.id, { content, date });
-    } else {
-      saveDiary({ content, date });
-    }
-
-    setContent('');
-    setDate(new Date());
-    onComplete?.();
-  };
-
-  const formatDate = (date: Date | null) => {
-    try {
-      if (!date || !isValid(date)) {
-        return '날짜를 선택하세요';
-      }
-      return format(date, 'PPP', { locale: ko });
-    } catch (error) {
-      console.error('Date formatting error:', error);
-      return '날짜를 선택하세요';
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className='space-y-4'>
-      <div className='flex flex-col space-y-2'>
-        <label htmlFor='date' className='text-sm font-medium text-gray-700'>
-          날짜
-        </label>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant={'outline'}
-              className={cn(
-                'justify-start text-left font-normal',
-                !date && 'text-muted-foreground'
-              )}
-            >
-              <CalendarIcon className='mr-2 h-4 w-4' />
-              {formatDate(date)}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className='w-auto p-0'>
-            <Calendar
-              mode='single'
-              selected={date}
-              onSelect={(newDate) => newDate && setDate(newDate)}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
-      </div>
-
-      <div>
-        <label
-          htmlFor='content'
-          className='block text-sm font-medium text-gray-700'
-        >
-          내용
-        </label>
-        <textarea
-          id='content'
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={5}
-          className='mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500'
-          required
-          placeholder='오늘의 일기를 작성해보세요...'
-        />
-      </div>
-
-      <div className='flex justify-end space-x-2'>
-        {diary && (
-          <Button
-            type='button'
-            variant='outline'
-            onClick={() => {
-              setContent('');
-              setDate(new Date());
-              onComplete?.();
-            }}
-          >
-            취소
-          </Button>
-        )}
-        <Button type='submit'>{diary ? '수정하기' : '저장하기'}</Button>
-      </div>
-    </form>
-  );
-}
-
-```
-
-# components/DiaryList.tsx
-
-```tsx
+// components/DiaryList.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Diary } from '@/lib/types';
-import { getDiaries, deleteDiary } from '@/lib/diary';
-import { Button } from '@/components/ui/button';
-import DiaryForm from './DiaryForm';
-import { format, isValid } from 'date-fns';
-import { ko } from 'date-fns/locale';
+import Link from 'next/link';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { getAllEntries } from '@/lib/diary';
+import type { DiaryEntry, MoodType } from '@/types/diaryType';
+import { MOOD_ICONS } from '@/lib/mood';
+import { Meh } from 'lucide-react';
 
 export default function DiaryList() {
-  const [diaries, setDiaries] = useState<Diary[]>([]);
-  const [selectedDiary, setSelectedDiary] = useState<Diary | null>(null);
+  const [entries, setEntries] = useState<DiaryEntry[]>([]);
 
   useEffect(() => {
-    setDiaries(getDiaries());
+    setEntries(getAllEntries());
   }, []);
 
-  const handleEdit = (diary: Diary) => {
-    setSelectedDiary(diary);
-  };
-
-  const handleDelete = (id: string) => {
-    deleteDiary(id);
-    setDiaries(getDiaries());
-  };
-
-  const handleEditComplete = () => {
-    setSelectedDiary(null);
-    setDiaries(getDiaries());
-  };
-
-  const formatDate = (date: Date) => {
-    try {
-      if (!isValid(date)) {
-        return '날짜 형식 오류';
-      }
-      return format(date, 'PPP', { locale: ko });
-    } catch (error) {
-      console.error('Date formatting error:', error);
-      return '날짜 형식 오류';
-    }
-  };
-
   return (
-    <div className='space-y-4'>
-      {diaries.map((diary) => (
-        <div key={diary.id}>
-          {selectedDiary?.id === diary.id ? (
-            <div className='p-4 border rounded-lg shadow-sm'>
-              <DiaryForm
-                diary={selectedDiary}
-                onComplete={handleEditComplete}
-              />
-            </div>
-          ) : (
-            <div className='p-4 border rounded-lg shadow-sm hover:shadow-md transition-shadow'>
-              <div className='flex flex-col space-y-2'>
-                <span className='text-sm text-gray-500'>
-                  {formatDate(new Date(diary.date))}
-                </span>
-                <p className='text-gray-600 whitespace-pre-wrap'>
-                  {diary.content}
-                </p>
-                <div className='flex justify-end space-x-2'>
-                  <Button variant='outline' onClick={() => handleEdit(diary)}>
-                    수정
-                  </Button>
-                  <Button
-                    variant='destructive'
-                    onClick={() => handleDelete(diary.id)}
-                  >
-                    삭제
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
+    <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
+      {entries.map((entry) => {
+        // 타입 안전성을 위한 처리
+        const mood = (entry.mood || '평범') as MoodType;
+        const MoodIcon = MOOD_ICONS[mood] || Meh;
+
+        return (
+          <Link key={entry.id} href={`/${entry.id}`}>
+            <Card
+              className='hover:bg-accent transition-colors'
+              style={{
+                backgroundColor: entry.moodColor
+                  ? `${entry.moodColor}20`
+                  : undefined,
+                borderColor: entry.moodColor ? entry.moodColor : undefined,
+              }}
+            >
+              <CardHeader className='flex flex-row justify-between items-center text-sm text-muted-foreground'>
+                <span>{new Date(entry.date).toLocaleDateString('ko-KR')}</span>
+                <MoodIcon
+                  className='h-5 w-5'
+                  style={{ color: entry.moodColor }}
+                />
+              </CardHeader>
+              <CardContent>
+                <p className='line-clamp-3'>{entry.content}</p>
+              </CardContent>
+            </Card>
+          </Link>
+        );
+      })}
     </div>
   );
 }
 
 ```
 
-# components/ui/button.tsx
+# components\ui\button.tsx
 
 ```tsx
 import * as React from "react"
@@ -557,7 +650,7 @@ export { Button, buttonVariants }
 
 ```
 
-# components/ui/calendar.tsx
+# components\ui\calendar.tsx
 
 ```tsx
 "use client"
@@ -629,7 +722,92 @@ export { Calendar }
 
 ```
 
-# components/ui/popover.tsx
+# components\ui\card.tsx
+
+```tsx
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className
+    )}
+    {...props}
+  />
+))
+Card.displayName = "Card"
+
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    {...props}
+  />
+))
+CardHeader.displayName = "CardHeader"
+
+const CardTitle = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    className={cn(
+      "text-2xl font-semibold leading-none tracking-tight",
+      className
+    )}
+    {...props}
+  />
+))
+CardTitle.displayName = "CardTitle"
+
+const CardDescription = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <p
+    ref={ref}
+    className={cn("text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+CardDescription.displayName = "CardDescription"
+
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+))
+CardContent.displayName = "CardContent"
+
+const CardFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex items-center p-6 pt-0", className)}
+    {...props}
+  />
+))
+CardFooter.displayName = "CardFooter"
+
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
+
+```
+
+# components\ui\popover.tsx
 
 ```tsx
 "use client"
@@ -666,7 +844,37 @@ export { Popover, PopoverTrigger, PopoverContent }
 
 ```
 
-# docs/PRD.md
+# components\ui\textarea.tsx
+
+```tsx
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+export interface TextareaProps
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ className, ...props }, ref) => {
+    return (
+      <textarea
+        className={cn(
+          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Textarea.displayName = "Textarea"
+
+export { Textarea }
+
+```
+
+# docs\PRD.md
 
 ```md
 # MoodDiary 제품 요구사항 문서(PRD)
@@ -765,109 +973,123 @@ export { Popover, PopoverTrigger, PopoverContent }
 
 ```
 
-# lib/diary.ts
+# lib\diary.ts
 
 ```ts
-import { Diary } from './types';
+export const storageKey = 'diary-entries';
+import type { DiaryEntry } from '@/types/diaryType';
+import { analyzeMood, MOOD_COLORS } from './mood';
 
-// localStorage에 저장되는 데이터의 타입 정의
-interface StoredDiary {
-  id: string;
-  content: string;
-  date: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Date 객체를 StoredDiary 형식으로 변환하는 헬퍼 함수
-const convertToStoredDiary = (diary: Diary): StoredDiary => ({
-  id: diary.id,
-  content: diary.content,
-  date: diary.date.toISOString(),
-  createdAt: diary.createdAt.toISOString(),
-  updatedAt: diary.updatedAt.toISOString(),
-});
-
-// localStorage에서 일기 목록 가져오기
-export const getDiaries = (): Diary[] => {
+export const getAllEntries = (): DiaryEntry[] => {
   if (typeof window === 'undefined') return [];
-  const diaries = localStorage.getItem('diaries');
-  return diaries
-    ? JSON.parse(diaries).map((diary: StoredDiary) => ({
-        ...diary,
-        date: new Date(diary.date),
-        createdAt: new Date(diary.createdAt),
-        updatedAt: new Date(diary.updatedAt),
-      }))
-    : [];
+  const entries = localStorage.getItem(storageKey);
+  return entries ? JSON.parse(entries) : [];
 };
 
-// 새 일기 저장
-export const saveDiary = (
-  diary: Omit<Diary, 'id' | 'createdAt' | 'updatedAt'>
-) => {
-  const diaries = getDiaries();
-  const newDiary: Diary = {
-    ...diary,
+export const getEntryById = (id: string): DiaryEntry | undefined => {
+  const entries = getAllEntries();
+  return entries.find((entry) => entry.id === id);
+};
+
+export const createEntry = async (
+  date: string,
+  content: string
+): Promise<DiaryEntry> => {
+  const entries = getAllEntries();
+  const mood = await analyzeMood(content);
+
+  const newEntry: DiaryEntry = {
     id: crypto.randomUUID(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    date,
+    content,
+    mood,
+    moodColor: MOOD_COLORS[mood],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 
-  const diaryToSave = convertToStoredDiary(newDiary);
-  localStorage.setItem(
-    'diaries',
-    JSON.stringify([diaryToSave, ...diaries.map(convertToStoredDiary)])
-  );
-  return newDiary;
+  localStorage.setItem(storageKey, JSON.stringify([newEntry, ...entries]));
+  return newEntry;
 };
 
-// 일기 수정
-export const updateDiary = (id: string, diary: Partial<Diary>) => {
-  const diaries = getDiaries();
-  const updatedDiaries = diaries.map((d) =>
-    d.id === id
-      ? {
-          ...d,
-          ...diary,
-          updatedAt: new Date(),
-          date: diary.date ? diary.date : d.date,
-        }
-      : d
-  );
+export const updateEntry = async (
+  id: string,
+  date: string,
+  content: string
+): Promise<DiaryEntry> => {
+  const entries = getAllEntries();
+  const mood = await analyzeMood(content);
 
-  localStorage.setItem(
-    'diaries',
-    JSON.stringify(updatedDiaries.map(convertToStoredDiary))
-  );
+  const updatedEntries = entries.map((entry) => {
+    if (entry.id === id) {
+      return {
+        ...entry,
+        date,
+        content,
+        mood,
+        moodColor: MOOD_COLORS[mood],
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return entry;
+  });
+
+  localStorage.setItem(storageKey, JSON.stringify(updatedEntries));
+  return updatedEntries.find((entry) => entry.id === id)!;
 };
 
-// 일기 삭제
-export const deleteDiary = (id: string) => {
-  const diaries = getDiaries();
-  const filteredDiaries = diaries.filter((d) => d.id !== id);
-  localStorage.setItem(
-    'diaries',
-    JSON.stringify(filteredDiaries.map(convertToStoredDiary))
-  );
+export const deleteEntry = (id: string): void => {
+  const entries = getAllEntries();
+  const filteredEntries = entries.filter((entry) => entry.id !== id);
+  localStorage.setItem(storageKey, JSON.stringify(filteredEntries));
 };
 
 ```
 
-# lib/types.ts
+# lib\mood.ts
 
 ```ts
-export interface Diary {
-  id: string;
-  content: string;
-  date: Date; // 사용자가 선택한 날짜
-  createdAt: Date;
-  updatedAt: Date;
+import { MoodType } from '@/types/diaryType';
+import { Smile, Frown, Angry, Meh, PartyPopper } from 'lucide-react';
+
+export const MOOD_COLORS = {
+  행복: '#FFD700',
+  슬픔: '#1E90FF',
+  분노: '#FF4500',
+  평범: '#C0C0C0',
+  신남: '#7FFF00',
+} as const;
+
+export const MOOD_ICONS = {
+  행복: Smile,
+  슬픔: Frown,
+  분노: Angry,
+  평범: Meh,
+  신남: PartyPopper,
+} as const;
+
+export async function analyzeMood(content: string): Promise<MoodType> {
+  try {
+    const response = await fetch('/api/analyze-mood', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    });
+
+    const data = await response.json();
+    console.log('1111-----> data from gpt: ', data);
+    return data.mood;
+  } catch (error) {
+    console.error('감정 분석 중 오류 발생:', error);
+    return '평범';
+  }
 }
 
 ```
 
-# lib/utils.ts
+# lib\utils.ts
 
 ```ts
 import { clsx, type ClassValue } from "clsx"
@@ -921,6 +1143,7 @@ export default nextConfig;
     "date-fns": "^3.6.0",
     "lucide-react": "^0.453.0",
     "next": "14.2.16",
+    "openai": "^4.68.4",
     "react": "^18",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18",
@@ -1094,6 +1317,23 @@ export default config;
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
+}
+
+```
+
+# types\diaryType.ts
+
+```ts
+export type MoodType = '행복' | '슬픔' | '분노' | '평범' | '신남';
+
+export interface DiaryEntry {
+  id: string;
+  date: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  mood?: MoodType; // 감정 상태
+  moodColor?: string; // 감정에 따른 색상
 }
 
 ```
