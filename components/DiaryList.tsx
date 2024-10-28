@@ -1,25 +1,16 @@
-// components/DiaryList.tsx
-'use client';
-
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { getAllEntries } from '@/lib/diary';
-import type { DiaryEntry, MoodType } from '@/types/diaryType';
+import type { MoodType } from '@/types/diaryType';
+import { getAllEntries } from '@/app/actions/diary';
 import { MOOD_ICONS } from '@/lib/mood';
 import { Meh } from 'lucide-react';
 
-export default function DiaryList() {
-  const [entries, setEntries] = useState<DiaryEntry[]>([]);
-
-  useEffect(() => {
-    setEntries(getAllEntries());
-  }, []);
+export default async function DiaryList() {
+  const entries = await getAllEntries();
 
   return (
     <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
       {entries.map((entry) => {
-        // 타입 안전성을 위한 처리
         const mood = (entry.mood || '평범') as MoodType;
         const MoodIcon = MOOD_ICONS[mood] || Meh;
 

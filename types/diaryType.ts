@@ -6,6 +6,6 @@ export interface DiaryEntry {
   content: string;
   createdAt: string;
   updatedAt: string;
-  mood?: MoodType; // 감정 상태
-  moodColor?: string; // 감정에 따른 색상
+  mood?: MoodType | undefined; // 감정 상태
+  moodColor?: string | undefined; // 감정에 따른 색상
 }

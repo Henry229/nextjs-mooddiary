@@ -1,32 +1,26 @@
-'use client';
-
-import { useRouter } from 'next/navigation';
+import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Pencil, Trash2, Meh } from 'lucide-react';
-import { getEntryById, deleteEntry } from '@/lib/diary';
+import { Pencil, Meh } from 'lucide-react';
+import { getEntryById } from '@/app/actions/diary';
 import { MOOD_ICONS } from '@/lib/mood';
 import type { MoodType } from '@/types/diaryType';
-import Link from 'next/link';
+import DeleteButton from './DeleteButton';
 
-export default function DiaryDetail({ params }: { params: { id: string } }) {
-  const router = useRouter();
-  const entry = getEntryById(params.id);
+export default async function DiaryDetail({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const entry = await getEntryById(params.id);
 
   if (!entry) {
-    return <div>일기를 찾을 수 없습니다.</div>;
+    notFound();
   }
 
-  // 타입 안전성을 위한 처리
   const mood = (entry.mood || '평범') as MoodType;
   const MoodIcon = MOOD_ICONS[mood] || Meh;
-
-  const handleDelete = () => {
-    if (confirm('정말로 삭제하시겠습니까?')) {
-      deleteEntry(params.id);
-      router.push('/');
-    }
-  };
 
   return (
     <div className='container mx-auto py-8'>
@@ -55,9 +49,7 @@ export default function DiaryDetail({ params }: { params: { id: string } }) {
                 <Pencil className='h-4 w-4' />
               </Button>
             </Link>
-            <Button variant='destructive' size='icon' onClick={handleDelete}>
-              <Trash2 className='h-4 w-4' />
-            </Button>
+            <DeleteButton id={params.id} />
           </div>
         </CardHeader>
         <CardContent>
